@@ -27,6 +27,19 @@ Deduplikasi/normalisasi ID grup.
 
 
 
+hapus fungsi atau featur /scan_group secara manual jadi hanya scan user scara otomatis oleh bot ketika user mengirim pesan ke grup paham kan coba sambil terangkan apa yang kamu lakukan dari perubahan kode main.py ini
+
+format kotak hitam (blok <pre> atau <code> di Telegram)
+
+Pelacakan Identitas Pasif	Merekam perubahan full_name dan username pengguna secara otomatis saat bot menerima events.UserUpdate atau events.NewMessage dari pengguna tersebut.
+Pelacakan Grup Aktif Pasif	Mencatat grup/channel (ID dan judul) tempat pengguna mengirim pesan, menambahkan entri ke riwayat jika grup tersebut baru bagi pengguna.
+Penyimpanan Data Lokal & Berkelanjutan	Menyimpan data riwayat pengguna dan status pemindaian grup ke file JSON di disk pada interval waktu yang terjadwal
+
+
+
+
+
+
 
 
 
