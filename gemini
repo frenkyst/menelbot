@@ -1,0 +1,39 @@
+Tentu saja bisa! Saya siap membantu Anda. 😊
+
+Cara terbaik untuk menjelaskan program bot Python Anda adalah **memberikan detail langkah demi langkah, sejelas dan selengkap mungkin** mengenai hal-hal berikut:
+
+### 💡 Hal-hal yang Perlu Anda Jelaskan
+
+* **Tujuan Bot:** Apa yang harus dilakukan bot ini secara spesifik? (Contoh: Mengirim notifikasi cuaca, menjawab pertanyaan sederhana, memproses data dari *spreadsheet*, dsb.)
+* **Fungsi Utama:** Bagian-bagian kunci apa saja yang harus ada? (Contoh: Fungsi untuk *login*, fungsi untuk mengambil data, fungsi untuk memformat respons, dsb.)
+* **Pustaka (Libraries) yang Digunakan:** Apakah Anda menggunakan pustaka tertentu (seperti `requests`, `BeautifulSoup`, `telepot`/`python-telegram-bot`, `discord.py`, dsb.)? Sebutkan jika ada.
+* **Logika Alir (Flow Logic):** Bagaimana alur kerja bot dari awal hingga akhir? (Contoh: 1. Terima perintah $\rightarrow$ 2. Cek database $\rightarrow$ 3. Ambil data API $\rightarrow$ 4. Kirim respons.)
+* **Data Input/Output:** Data apa yang dimasukkan (input) dan data apa yang dihasilkan (output)? (Contoh: Input adalah teks perintah, Output adalah pesan teks/gambar.)
+
+---
+
+### 📝 Format Penjelasan yang Dianjurkan
+
+Anda bisa menjelaskannya dengan cara yang paling nyaman bagi Anda, tetapi format berikut seringkali sangat membantu:
+
+1.  **Pendahuluan Singkat:** Beri nama programnya dan jelaskan fungsinya dalam satu kalimat.
+2.  **Struktur (Outline):** Bagi penjelasan menjadi beberapa bagian atau tahapan. Gunakan *bullet points* atau penomoran untuk setiap langkah.
+3.  **Detail:** Untuk setiap langkah, jelaskan kode atau pseudocode (kode seperti bahasa Inggris) yang Anda bayangkan.
+
+**Contoh:**
+
+> "Saya ingin membuat **Bot Telegram Cuaca**.
+>
+> 1.  **Tahap 1: Inisialisasi Bot**. Saya akan menggunakan pustaka `python-telegram-bot` dan *API Key* saya.
+> 2.  **Tahap 2: Fungsi Start**. Bot harus merespons `/start` dengan pesan sambutan.
+> 3.  **Tahap 3: Fungsi Cuaca**. Jika pengguna mengetik nama kota, bot harus:
+>     * a. Mengambil nama kota.
+>     * b. Memanggil **OpenWeatherMap API** menggunakan pustaka `requests`.
+>     * c. Memparsing respons JSON untuk mendapatkan suhu dan deskripsi cuaca.
+>     * d. Mengirim hasilnya kembali ke pengguna."
+
+---
+
+Jangan ragu untuk mulai menjelaskan **satu per satu secara detail** kapan pun Anda siap. Saya akan mendengarkan dan mencoba membantu Anda mewujudkan ide program bot Python Anda!
+
+Apakah Anda ingin mulai menjelaskan ide program bot Anda sekarang?
