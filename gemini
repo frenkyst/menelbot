@@ -41,7 +41,7 @@ note penting
 - Saat printah /hisz ambil data dari database cocokan dengan data baru dari tele jika ada perubahan data baru simpan kedatabase
 - Pencatatan data grup sertakan nama grup
 - Jika username sudah ada brubah jadi null abaikan saja proses penyimpanan karena sering tidak mendapatkan username dari proses scraping
-- Perintah /scan_group pastikan bisa menerima ID grup sebagai argumen.
+- Perintah /scan_group dan /scan_allgroup pastikan bisa menerima ID grup sebagai argumen dan data yang disimpan sama berupa string dengan awalan -100
 - Tampilkan di terminal berapa jumlah user yang disimpan di database
 - Fungsi /scan_user <user_id> jika tidak ditemukan ambil dan cocokkan dengan data yang ada di database pastikan penyimpanan data tidak redudan dengan menggunakan fungsi inti save user data
 - Buatkan fungsi /scan_allgrup biar tidak scan grup satu persatu
@@ -51,3 +51,10 @@ note penting
 - buat fungsi untuk mengambil data user secara otomatis dari chat user ke grup yang sama dengan user yang dipakai untuk bot. catatan: fungsi ini berjalan bedasarkan list grup id yang sudah berhasil di scan dari scan grup (pastikan data id tele int bukan string sehingga tidak ada miss dalam pencocokan if)
 - buat fungsi untuk menampilkan grup yang sudah di scan dan yang belum pernah di scan
 - buat fungsi menambah grup secara manual untuk masuk daftar list pasif detection bot
+- buat /scan_allgroup biar tidak scan grup satu satu
+- saat /scan_group dan /scan_allgroup fungsi penambahan nama grup yang discan ke active_chats_snapshot
+- Konsistensi data user id, chat id dan grup id gunakan string. biar tidak salah dalam menampilkan laporan
+- proses penyimpanan data dibuat batch jangan disimpan satu satu tunggu sampai data terkumpul 1000 data baru di simpan ke database
+- Scan Aktif (/scan_group, /scan_allgrup): Menggunakan batch processing untuk kecepatan saat menangani ribuan pengguna.
+- Scan Pasif (Pesan masuk): Menggunakan penyimpanan individual untuk merespons peristiwa secara real-time dengan efisien.
+
