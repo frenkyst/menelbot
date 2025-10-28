@@ -1,39 +1,53 @@
-Tentu saja bisa! Saya siap membantu Anda. 😊
 
-Cara terbaik untuk menjelaskan program bot Python Anda adalah **memberikan detail langkah demi langkah, sejelas dan selengkap mungkin** mengenai hal-hal berikut:
+Buat Bot untuk melakukan **scraping data** terhadap user Telegram, terutama di lingkungan grup/channel, dan menyimpan riwayat perubahan identitas serta keanggotaan grup ke dalam file JSON.
 
-### 💡 Hal-hal yang Perlu Anda Jelaskan
+### 1. ⚙️ Arsitektur & Persistensi Data
 
-* **Tujuan Bot:** Apa yang harus dilakukan bot ini secara spesifik? (Contoh: Mengirim notifikasi cuaca, menjawab pertanyaan sederhana, memproses data dari *spreadsheet*, dsb.)
-* **Fungsi Utama:** Bagian-bagian kunci apa saja yang harus ada? (Contoh: Fungsi untuk *login*, fungsi untuk mengambil data, fungsi untuk memformat respons, dsb.)
-* **Pustaka (Libraries) yang Digunakan:** Apakah Anda menggunakan pustaka tertentu (seperti `requests`, `BeautifulSoup`, `telepot`/`python-telegram-bot`, `discord.py`, dsb.)? Sebutkan jika ada.
-* **Logika Alir (Flow Logic):** Bagaimana alur kerja bot dari awal hingga akhir? (Contoh: 1. Terima perintah $\rightarrow$ 2. Cek database $\rightarrow$ 3. Ambil data API $\rightarrow$ 4. Kirim respons.)
-* **Data Input/Output:** Data apa yang dimasukkan (input) dan data apa yang dihasilkan (output)? (Contoh: Input adalah teks perintah, Output adalah pesan teks/gambar.)
+* **Pustaka Utama:** `telethon` (untuk berinteraksi sebagai User Client).
+* **Konfigurasi:** Menggunakan file `.env` untuk menyimpan `TG_API_ID`, `TG_API_HASH`, dan `ADMIN_IDS`.
+* **Penyimpanan Lokal (`LocalDataStore`):**
+    * Data user (`user_data.json`) dan status pemindaian (`scan_status.json`) disimpan di disk.
+    * Menggunakan *cache* di memori dan *ThreadPoolExecutor* untuk I/O file secara *asynchronous* (*scheduled_save_to_disk*).
+* **Anti-Redundansi:** Logika di `save_user_data` dirancang untuk **tidak membuat entri riwayat baru** kecuali terjadi perubahan identitas (`full_name` atau `username`) atau penambahan grup aktif/bersama yang signifikan.
 
----
+### 2. 👥 Pelacakan User dan Riwayat (`/hisz`)
 
-### 📝 Format Penjelasan yang Dianjurkan
+* **`save_user_data(user_entity, extra_data)`:** Fungsi inti untuk menyimpan riwayat user.
+    * **Merge:** Jika hanya ada penambahan grup aktif, fungsi ini akan *menggabungkan* data ke entri riwayat terakhir, bukan membuat entri baru (meminimalkan ukuran data).
+    * **Snapshot Grup:** Mencatat grup tempat user mengirim pesan (`active_chats_snapshot`).
+* **`show_history(client, admin_id, user_id_to_check)` (`/hisz`)**:
+    * Mengambil data riwayat dari cache.
+    * Membandingkan data yang tersimpan dengan **status *live* Telegram** untuk mendeteksi data yang "stale" (belum tersimpan).
+    * Mendukung **Reverse Lookup** (mencari user ID mana saja yang memiliki ID Grup tertentu dalam riwayat mereka).
 
-Anda bisa menjelaskannya dengan cara yang paling nyaman bagi Anda, tetapi format berikut seringkali sangat membantu:
+### 3. 🔍 Pemindaian Grup (`/scan_group`, `/scan_user`)
 
-1.  **Pendahuluan Singkat:** Beri nama programnya dan jelaskan fungsinya dalam satu kalimat.
-2.  **Struktur (Outline):** Bagi penjelasan menjadi beberapa bagian atau tahapan. Gunakan *bullet points* atau penomoran untuk setiap langkah.
-3.  **Detail:** Untuk setiap langkah, jelaskan kode atau pseudocode (kode seperti bahasa Inggris) yang Anda bayangkan.
+* **Pemindaian Grup Cepat (`/scan_group`):**
+    * Menggunakan **Metode Iterasi Alfabetis** (`client.iter_participants` dengan `search=filter`) sebagai *workaround* untuk batas API 10.000 user.
+    * **Checkpoint:** Menyimpan kemajuan pemindaian (`filter_index` dan `total_processed_since_start`) ke `scan_status.json` sehingga dapat dilanjutkan setelah *disconnect* atau *FloodWaitError*.
+    * Mencatat grup yang dipindai ke *snapshot* `active_chats_snapshot` setiap user.
+* **Pemindaian User Detail (`/scan_user`):**
+    * Melakukan panggilan API mahal (`client.get_common_chats`) untuk mendapatkan daftar **semua grup bersama** antara bot dan user target.
+    * Mencatat hasilnya ke `shared_chats` di riwayat user.
+* **Administrasi Scan (`/clear_checkpoint`):** Menghapus status kemajuan pemindaian grup tertentu.
 
-**Contoh:**
-
-> "Saya ingin membuat **Bot Telegram Cuaca**.
->
-> 1.  **Tahap 1: Inisialisasi Bot**. Saya akan menggunakan pustaka `python-telegram-bot` dan *API Key* saya.
-> 2.  **Tahap 2: Fungsi Start**. Bot harus merespons `/start` dengan pesan sambutan.
-> 3.  **Tahap 3: Fungsi Cuaca**. Jika pengguna mengetik nama kota, bot harus:
->     * a. Mengambil nama kota.
->     * b. Memanggil **OpenWeatherMap API** menggunakan pustaka `requests`.
->     * c. Memparsing respons JSON untuk mendapatkan suhu dan deskripsi cuaca.
->     * d. Mengirim hasilnya kembali ke pengguna."
-
----
-
-Jangan ragu untuk mulai menjelaskan **satu per satu secara detail** kapan pun Anda siap. Saya akan mendengarkan dan mencoba membantu Anda mewujudkan ide program bot Python Anda!
-
-Apakah Anda ingin mulai menjelaskan ide program bot Anda sekarang?
+note penting
+- Buat struktur datanya sama dari file user_data yang sudah ada sehingga tidak tumpang tidih dan merusak data yang sudah ada
+- Fungsi /hisz tampilan ouputnya perubahan (username dan nama) menggunakan blok <pre> atau <code> di Telegram dan dibuat dengan sesimpel dan serapi mungkin enak untuk dilihat.
+- Fungsi /scan_group tampilan ouputnya edit pesan yang sudah ada saja jangan mengirim berulang yang mengakibatkan di baned telegram dan berikan jeda berkala, menggunakan blok <pre> atau <code> di Telegram dan dibuat dengan sesimpel dan serapi mungkin enak untuk dilihat.
+- Buat bot mencatat data user secara pasif saat user yang melakukan chat ke grup, Tapi hanya grup yang sudah pernah discan dan selesai proses scannya
+- Buat semua fungsi mengeluarkan ouput terminal disertai keterangan fungsi yang sedang jalan biar saya tau bot jalan atau tidak
+- Perintah /hisz dilakukan dengan id tele
+- Saat printah /hisz ambil data dari database cocokan dengan data baru dari tele jika ada perubahan data baru simpan kedatabase
+- Pencatatan data grup sertakan nama grup
+- Jika username sudah ada brubah jadi null abaikan saja proses penyimpanan karena sering tidak mendapatkan username dari proses scraping
+- Perintah /scan_group pastikan bisa menerima ID grup sebagai argumen.
+- Tampilkan di terminal berapa jumlah user yang disimpan di database
+- Fungsi /scan_user <user_id> jika tidak ditemukan ambil dan cocokkan dengan data yang ada di database pastikan penyimpanan data tidak redudan dengan menggunakan fungsi inti save user data
+- Buatkan fungsi /scan_allgrup biar tidak scan grup satu persatu
+- Implementasikan sistem batch processing ini ke dalam fungsi scan_group
+- Metode scan group menjadi scan group biasa jika member grup kurang dari 10000
+- Konekan dengan database mongodb atlas
+- buat fungsi untuk mengambil data user secara otomatis dari chat user ke grup yang sama dengan user yang dipakai untuk bot. catatan: fungsi ini berjalan bedasarkan list grup id yang sudah berhasil di scan dari scan grup (pastikan data id tele int bukan string sehingga tidak ada miss dalam pencocokan if)
+- buat fungsi untuk menampilkan grup yang sudah di scan dan yang belum pernah di scan
+- buat fungsi menambah grup secara manual untuk masuk daftar list pasif detection bot
