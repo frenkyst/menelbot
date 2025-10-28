@@ -189,7 +189,7 @@ class TeleScrapeTracker:
             block.append(f"<code>Username : @{entry.get('username', 'N/A')}</code>")
             active_chats = entry.get('active_chats_snapshot', [])
             if active_chats:
-                chat_titles = [await self._get_chat_title(cid) for cid in active_chats]
+                chat_titles = [await self._get_chat_title(int(cid)) for cid in active_chats] # Added int() conversion
                 block.append(f"\n*Terlihat di Grup:*\n- " + "\n- ".join(chat_titles))
             history_blocks.append('\n'.join(block))
         await event.reply(output_message + '\n'.join(history_blocks), parse_mode='html')
