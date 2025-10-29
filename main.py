@@ -5,7 +5,7 @@ import time
 from dotenv import load_dotenv
 from telethon import TelegramClient, events
 from telethon.tl.types import User
-from telethon.errors import MessageNotModifiedError
+from telethon.errors import MessageNotModifiedError, MessageTooLongError
 from telethon.tl.functions.channels import GetFullChannelRequest
 from telethon.tl.functions.messages import GetFullChatRequest
 
@@ -187,7 +187,6 @@ Klik pada perintah untuk menyalinnya.
 
         last_entry = history[-1]
         
-        # --- PERBAIKAN: Membuat tautan profil yang bisa diklik ---
         user_link_text = ""
         current_username = last_entry.get('username')
         if live_entity and live_entity.username:
@@ -196,10 +195,8 @@ Klik pada perintah untuk menyalinnya.
         if current_username:
             user_link_text = f"@{current_username}"
         else:
-            # Jika tidak ada username, gunakan nama lengkap sebagai teks tautan
             user_link_text = f"<code>{last_entry['full_name']}</code> (Tanpa Username)"
 
-        # Membuat tautan dengan format tg://user?id=...
         clickable_user_link = f"<a href='tg://user?id={user_id_str}'>{user_link_text}</a>"
         
         header = (f"**Riwayat untuk ID:** `{user_id_str}`\n"
@@ -218,7 +215,6 @@ Klik pada perintah untuk menyalinnya.
                 titles = [await self._get_chat_title(cid) for cid in chat_ids]
                 groups_output += f"\n\n**{title}:**\n- " + "\n- ".join(titles)
         
-        # Menggunakan parse_mode='html' untuk tautan
         await event.reply(f"{header}\n\n**Perubahan Identitas:**\n<pre>" + '\n'.join(history_blocks) + "</pre>" + groups_output, parse_mode='html')
 
     async def scan_group(self, event, *args):
@@ -423,23 +419,63 @@ Klik pada perintah untuk menyalinnya.
 
     async def scan_status(self, event, *args):
         msg = await event.reply("<code>Mengambil status pemindaian...</code>", parse_mode='html')
-        dialogs = await self.client.get_dialogs()
+        try:
+            dialogs = await self.client.get_dialogs()
+            
+            groups = {}
+            for d in dialogs:
+                if d.is_group or (d.is_channel and getattr(d.entity, 'megagroup', False)):
+                    gid = str(d.entity.id)
+                    if not gid.startswith('-100'):
+                        gid = '-100' + gid
+                    groups[gid] = d.entity.title
+            
+            scanned_ids = self.completed_scan_group_ids
+            scanned_list = [f"- {groups.get(gid, '[N/A]')} (`{gid}`)" for gid in scanned_ids if gid in groups]
+            unscanned_list = [f"- {title} (`{gid}`)" for gid, title in groups.items() if gid not in scanned_ids]
+            
+            # --- PERBAIKAN: Logika pemecahan pesan ---
+            
+            # 1. Kirim pesan "Selesai di Scan" terlebih dahulu
+            scanned_header = "✅ **Selesai (Pelacakan Pasif Aktif):**\n"
+            scanned_body = '\n'.join(scanned_list) or "Tidak ada."
+            await self.send_long_message(msg, scanned_header, scanned_body)
+            
+            # 2. Kirim pesan "Belum di Scan" sebagai balasan
+            unscanned_header = "❌ **Belum di Scan:**\n"
+            unscanned_body = '\n'.join(unscanned_list) or "Semua grup yang dikenal telah dipindai."
+            # Menggunakan event.chat_id untuk memastikan pesan terkirim di chat yang sama
+            await self.send_long_message(await self.client.get_messages(event.chat_id, ids=msg.id), unscanned_header, unscanned_body, is_reply=True)
+
+        except Exception as e:
+            await msg.edit(f"❌ Error saat mengambil status: `{e}`")
+
+    async def send_long_message(self, base_msg, header, body, is_reply=False):
+        """Fungsi utilitas untuk mengirim pesan panjang, memecahnya jika perlu."""
+        MAX_LEN = 4000 # Batas aman (maks 4096)
         
-        groups = {}
-        for d in dialogs:
-            if d.is_group or (d.is_channel and getattr(d.entity, 'megagroup', False)):
-                gid = str(d.entity.id)
-                if not gid.startswith('-100'):
-                    gid = '-100' + gid
-                groups[gid] = d.entity.title
+        # Jika pesan keseluruhan cukup pendek, kirim/edit saja
+        if len(header) + len(body) < MAX_LEN:
+            if is_reply:
+                await base_msg.reply(header + body, parse_mode='md')
+            else:
+                await base_msg.edit(header + body, parse_mode='md')
+            return
+
+        # Jika panjang, pecah bagian body
+        chunks = [body[i:i + MAX_LEN] for i in range(0, len(body), MAX_LEN)]
         
-        scanned_ids = self.completed_scan_group_ids
-        scanned = [f"- {groups.get(gid, '[N/A]')} (`{gid}`)" for gid in scanned_ids if gid in groups]
-        unscanned = [f"- {title} (`{gid}`)" for gid, title in groups.items() if gid not in scanned_ids]
-        
-        text = "**Status Pemindaian Grup**\n\n✅ **Selesai (Pelacakan Pasif Aktif):**\n" + ('\n'.join(scanned) or "Tidak ada.")
-        text += "\n\n❌ **Belum di Scan:**\n" + ('\n'.join(unscanned) or "Semua grup yang dikenal telah dipindai.")
-        await msg.edit(text, parse_mode='md')
+        # Kirim header dengan potongan pertama
+        first_chunk = chunks.pop(0)
+        if is_reply:
+            current_msg = await base_msg.reply(header + first_chunk, parse_mode='md')
+        else:
+            await base_msg.edit(header + first_chunk, parse_mode='md')
+            current_msg = base_msg
+
+        # Kirim sisa potongan sebagai balasan
+        for chunk in chunks:
+            current_msg = await current_msg.reply(chunk, parse_mode='md')
 
     async def add_group(self, event, *args):
         if not args:
