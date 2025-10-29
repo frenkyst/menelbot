@@ -10,9 +10,8 @@ class MongoDataStore:
         self.client = AsyncIOMotorClient(connection_string, io_loop=loop)
         self.db = self.client['telegram_scraper_db']
         
-        # --- PERBAIKAN: Menggunakan 2 koleksi sesuai struktur database Anda ---
         self.users = self.db['users']
-        self.scan_status = self.db['scan_status'] # Koleksi ini menangani checkpoint & status selesai
+        self.scan_status = self.db['scan_status']
         
         print(f"✅ [MongoDataStore] Connected to database '{self.db.name}'. Using collections: 'users', 'scan_status'.")
 
@@ -22,6 +21,7 @@ class MongoDataStore:
 
     async def save_user_data_logic(self, user_id: str, new_entry: dict, is_update: bool):
         if is_update:
+            # Operasi ini menjadi lebih jarang digunakan karena logika batch yang baru
             await self.users.update_one(
                 {'user_id': user_id},
                 {'$pop': {'history': 1}}
@@ -54,40 +54,60 @@ class MongoDataStore:
             active_chat_id = item['active_chat_id']
             user_id = str(user_entity.id)
             current_identity = {'full_name': (user_entity.first_name or "") + (" " + (user_entity.last_name or "") if user_entity.last_name else ""), 'username': user_entity.username}
+            
             if not current_identity['username'] and not current_identity['full_name']: continue
+            
             user_doc = existing_users.get(user_id)
             history = user_doc['history'] if user_doc and 'history' in user_doc else []
             last_entry = history[-1] if history else {}
+            
             if last_entry.get('username') and not current_identity['username']: continue
+            
             identity_changed = (last_entry.get('full_name') != current_identity['full_name'] or last_entry.get('username') != current_identity['username'])
             last_active_chats = set(last_entry.get('active_chats_snapshot', []))
             is_new_group = active_chat_id and active_chat_id not in last_active_chats
 
             if not history or identity_changed:
-                if active_chat_id: last_active_chats.add(active_chat_id)
-                new_entry = {'timestamp': int(time.time()), 'full_name': current_identity['full_name'], 'username': current_identity['username'], 'active_chats_snapshot': sorted(list(last_active_chats)), 'shared_chats': last_entry.get('shared_chats', [])}
+                # --- KASUS 1: Pengguna Baru atau Identitas Berubah ---
+                # Membuat entri riwayat baru. Ini aman.
+                new_active_chats = last_active_chats.copy()
+                if active_chat_id: new_active_chats.add(active_chat_id)
+                new_entry = {
+                    'timestamp': int(time.time()), 
+                    'full_name': current_identity['full_name'], 
+                    'username': current_identity['username'], 
+                    'active_chats_snapshot': sorted(list(new_active_chats)), 
+                    'shared_chats': last_entry.get('shared_chats', [])
+                }
                 bulk_operations.append(UpdateOne({'user_id': user_id}, {'$push': {'history': new_entry}}, upsert=True))
                 saved_count += 1
             elif is_new_group:
-                history.pop()
-                last_active_chats.add(active_chat_id)
-                last_entry['active_chats_snapshot'] = sorted(list(last_active_chats))
-                history.append(last_entry)
-                bulk_operations.append(UpdateOne({'user_id': user_id}, {'$set': {'history': history}}, upsert=True))
-                saved_count += 1
-
+                # --- KASUS 2: Hanya Grup Aktif Baru (Identitas Sama) ---
+                # Menggunakan operasi atomik untuk menambahkan grup ke entri riwayat terakhir.
+                # Ini adalah cara yang aman untuk menghindari race condition.
+                bulk_operations.append(UpdateOne(
+                    {'user_id': user_id, 'history': {'$exists': True, '$not': {'$size': 0}}},
+                    {'$addToSet': {'history.$[].active_chats_snapshot': active_chat_id}}
+                ))
+                # Perhatikan: saved_count tidak di-increment di sini karena ini adalah "update"
+                # pada data yang sudah ada, bukan entri "baru". Logika ini konsisten.
+                
         if bulk_operations:
-            await self.users.bulk_write(bulk_operations)
-            print(f"   [DB Batch] ✅ Bulk write completed. Saved/Updated {saved_count} records.")
-        return saved_count
+            try:
+                result = await self.users.bulk_write(bulk_operations)
+                # Menggunakan result.modified_count dan result.upserted_count untuk log yang lebih akurat
+                print(f"   [DB Batch] ✅ Bulk write completed. New/Updated: {result.upserted_count + result.modified_count} records.")
+                return result.upserted_count + result.modified_count
+            except Exception as e:
+                print(f"   [DB Batch] ❗️ Error during bulk write: {e}")
+                return 0
+        return 0
 
     async def get_completed_scan_ids(self):
-        # --- PERBAIKAN: Mencari di 'scan_status' dimana 'completed' adalah True ---
         cursor = self.scan_status.find({'completed': True})
         return {doc['group_id'] for doc in await cursor.to_list(length=None)}
 
     async def mark_scan_as_completed(self, group_id: str):
-        # --- PERBAIKAN: Menulis status 'completed: true' ke 'scan_status' ---
         await self.scan_status.update_one(
             {'group_id': group_id},
             {'$set': {'completed': True, 'group_id': group_id}},
@@ -103,7 +123,6 @@ class MongoDataStore:
 
     async def update_scan_status(self, group_id: str, status_doc: dict):
         if not status_doc:
-            # Jika status kosong, hapus checkpoint tapi pertahankan status 'completed'
             await self.scan_status.update_one(
                 {'group_id': group_id},
                 {'$unset': {'filter_index': "", 'total_saved_since_start': ""}}
@@ -117,7 +136,6 @@ class MongoDataStore:
             )
 
     async def clear_scan_record(self, group_id: str):
-        # --- PERBAIKAN: Menghapus status 'completed' dari 'scan_status' ---
         await self.scan_status.update_one(
             {'group_id': group_id},
             {'$set': {'completed': False}},
