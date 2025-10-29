@@ -31,7 +31,6 @@ class TeleScrapeTracker:
         self.data_store = MongoDataStore(self.loop, self.MONGO_CONNECTION_STRING)
         
         self.client.add_event_handler(self.handle_command, events.NewMessage(pattern=r'^/[a-zA-Z_]+', forwards=False, from_users=self.ADMIN_IDS))
-        # --- PERBAIKAN: Mengaktifkan kembali pelacakan pasif ---
         self.client.add_event_handler(self.handle_passive_tracking, events.NewMessage(incoming=True, forwards=False))
         print("✅ [TeleScrapeTracker] Bot ready.")
 
@@ -40,7 +39,6 @@ class TeleScrapeTracker:
         await self._ensure_my_id()
         self.completed_scan_group_ids = await self.data_store.get_completed_scan_ids()
         print(f"✅ [Init] Loaded {len(self.completed_scan_group_ids)} completed scan groups from DB.")
-        # --- DEBUG: Menampilkan ID grup yang dimuat ---
         print(f"   [Init Debug] Completed Group IDs loaded: {self.completed_scan_group_ids}")
         total_users_in_db = await self.data_store.get_total_user_count()
         print(f"📊 [Init] Total users in database: {total_users_in_db}")
@@ -81,7 +79,6 @@ class TeleScrapeTracker:
         last_entry = history[-1] if history else {}
         
         if last_entry.get('username') and not current_identity['username']:
-            # print(f"   [SaveUser] Ignored saving for {user_id} because username changed to null.")
             return False
 
         last_active_chats = set(last_entry.get('active_chats_snapshot', []))
@@ -105,30 +102,47 @@ class TeleScrapeTracker:
         return False
 
     async def handle_passive_tracking(self, event):
+        if event.sender_id == self.my_id or event.sender_id in self.ADMIN_IDS:
+            return
+
         chat_id_str = str(event.chat_id)
-        if chat_id_str not in self.completed_scan_group_ids: return
-        if event.sender_id == self.my_id or event.sender_id in self.ADMIN_IDS: return
+        
+        process_message = False
+        active_chat_id_to_save = None
+        if event.is_private:
+            process_message = True
+            print(f"🕵️  [PassiveTrack] Saw private message from User ID: {event.sender_id}.")
+        elif (event.is_group or event.is_channel) and chat_id_str in self.completed_scan_group_ids:
+            process_message = True
+            group_title = await self._get_chat_title(chat_id_str)
+            # print(f"🕵️  [PassiveTrack] Saw message from User ID {event.sender_id} in whitelisted group '{group_title}'.")
+            active_chat_id_to_save = chat_id_str
+        
+        if not process_message:
+            return
 
         try:
             sender = await event.get_sender()
-            if isinstance(sender, User) and (event.is_group or event.is_channel):
-                group_title = await self._get_chat_title(chat_id_str)
-                sender_name = sender.first_name or ""
-                # print(f"🕵️  [PassiveTrack] Saw message from {sender_name} ({sender.id}) in '{group_title}'.")
-                await self.save_user_data(sender, active_chat_id=chat_id_str)
+            if isinstance(sender, User):
+                await self.save_user_data(sender, active_chat_id=active_chat_id_to_save)
         except Exception as e:
             print(f"❗️ [PassiveTrack] Minor exception: {e}")
 
     async def handle_command(self, event):
         print(f"⚙️  [HandleCommand] Admin {event.sender_id} sent command: {event.raw_text}")
-        command, *args = event.raw_text.split()
+        command_full, *args = event.raw_text.split()
+        command = command_full.lstrip('/')
         
-        command_map = {'help': self.show_help, 'hisz': self.show_history, 'scan_group': self.scan_group, 'scan_allgrup': self.scan_all_groups, 'scan_user': self.scan_user_details, 'clear_checkpoint': self.clear_checkpoint, 'scanstatus': self.scan_status, 'addgroup': self.add_group}
+        command_map = {
+            'help': self.show_help, 'hisz': self.show_history, 
+            'scan_group': self.scan_group, 'scan_allgrup': self.scan_all_groups, 
+            'scan_unscanned': lambda e, *a: self.scan_all_groups(e, *a, scan_mode='unscanned'),
+            'scan_user': self.scan_user_details, 'clear_checkpoint': self.clear_checkpoint, 
+            'scanstatus': self.scan_status, 'addgroup': self.add_group
+        }
         
-        # Menghapus '/' dari perintah untuk pencocokan
-        clean_command = command.lstrip('/')
-        if clean_command in command_map:
-            await command_map[clean_command](event, *args)
+        if command in command_map:
+            await command_map[command](event, *args)
 
     async def show_help(self, event, *args):
         help_text = """
@@ -138,7 +152,8 @@ Berikut adalah daftar perintah yang tersedia:
 
 - `/hisz <user_id>`: Menampilkan riwayat nama dan username.
 - `/scan_group <group_id>`: Memindai anggota dari satu grup.
-- `/scan_allgrup`: Memindai semua grup dimana bot menjadi anggota.
+- `/scan_allgrup`: Memindai **semua** grup dimana bot menjadi anggota.
+- `/scan_unscanned`: Memindai grup yang **belum pernah** discan.
 - `/scan_user <user_id>`: Menemukan grup bersama dengan pengguna.
 - `/scanstatus`: Menampilkan status pemindaian grup.
 - `/addgroup <group_id>`: Menambahkan grup ke daftar lacak pasif.
@@ -199,24 +214,43 @@ Klik pada perintah untuk menyalinnya.
         msg = await event.reply(f"<code>Mempersiapkan pemindaian grup {chat_id_str}...</code>", parse_mode='html')
         await self._perform_group_scan(chat_id_str, msg)
 
-    async def scan_all_groups(self, event, *args):
-        msg = await event.reply("<code>Mempersiapkan scan semua grup...</code>", parse_mode='html')
+    async def scan_all_groups(self, event, *args, scan_mode='all'):
+        mode_text = "semua grup" if scan_mode == 'all' else "grup yang belum discan"
+        msg = await event.reply(f"<code>Mempersiapkan scan {mode_text}...</code>", parse_mode='html')
+        
         try:
             dialogs = await self.client.get_dialogs()
-            groups = [d.entity for d in dialogs if d.is_group or (d.is_channel and getattr(d.entity, 'megagroup', False))]
+            all_groups = [d.entity for d in dialogs if d.is_group or (d.is_channel and getattr(d.entity, 'megagroup', False))]
         except Exception as e:
             await msg.edit(f"❌ Error: Gagal mendapatkan daftar grup.\n`{e}`")
             return
+            
+        groups_to_scan = []
+        if scan_mode == 'unscanned':
+            print("[ScanUnscanned] Filtering for unscanned groups...")
+            for group in all_groups:
+                gid = str(group.id)
+                if not gid.startswith('-100'): gid = '-100' + gid
+                if gid not in self.completed_scan_group_ids:
+                    groups_to_scan.append(group)
+            print(f"[ScanUnscanned] Found {len(groups_to_scan)} unscanned groups out of {len(all_groups)} total groups.")
+        else:
+            groups_to_scan = all_groups
+            print(f"[ScanAll] Found {len(groups_to_scan)} groups to scan.")
+
+        if not groups_to_scan:
+            await msg.edit("✅ Tidak ada grup baru untuk discan. Semua sudah terindeks.")
+            return
 
         summary = {"scanned": 0, "failed": []}
-        print(f"[ScanAll] Found {len(groups)} groups to scan.")
-        for i, chat in enumerate(groups):
+        total_to_scan = len(groups_to_scan)
+        for i, chat in enumerate(groups_to_scan):
             chat_id_str = str(chat.id)
-            if not chat_id_str.startswith("-100"):
-                 chat_id_str = "-100" + chat_id_str
+            if not chat_id_str.startswith("-100"): chat_id_str = "-100" + chat_id_str
 
-            print(f"   [ScanAll] Scanning group {i+1}/{len(groups)}: {chat.title} ({chat_id_str})")
-            await self._update_scan_msg(msg, f"SCAN SEMUA GRUP ({i+1}/{len(groups)})\nGRUP: {chat.title}", 0)
+            scan_title = "SCAN UNSCANNED" if scan_mode == 'unscanned' else "SCAN SEMUA GRUP"
+            print(f"   [{'ScanUnscanned' if scan_mode == 'unscanned' else 'ScanAll'}] Scanning group {i+1}/{total_to_scan}: {chat.title} ({chat_id_str})")
+            await self._update_scan_msg(msg, f"{scan_title} ({i+1}/{total_to_scan})\nGRUP: {chat.title}", 0)
             
             try:
                 if await self._perform_group_scan(chat_id_str, msg):
@@ -224,15 +258,15 @@ Klik pada perintah untuk menyalinnya.
                 else:
                     summary["failed"].append(chat.title)
             except Exception as e:
-                print(f"   [ScanAll] CRITICAL error scanning {chat.title}: {e}")
+                print(f"   [{'ScanUnscanned' if scan_mode == 'unscanned' else 'ScanAll'}] CRITICAL error scanning {chat.title}: {e}")
                 summary["failed"].append(f"{chat.title} (Error)")
 
-            if i < len(groups) - 1:
-                print("   [ScanAll] Pausing for 10 seconds...")
+            if i < total_to_scan - 1:
+                print("   [Scan] Pausing for 10 seconds...")
                 await asyncio.sleep(10)
 
         failed_list = "\n- ".join(summary['failed'])
-        final_text = f"✅ **PEMINDAIAN SEMUA GRUP SELESAI**\n\nSukses: {summary['scanned']}\nGagal: {len(summary['failed'])}"
+        final_text = f"✅ **PEMINDAIAN SELESAI ({mode_text.upper()})**\n\nSukses: {summary['scanned']}\nGagal: {len(summary['failed'])}"
         if summary['failed']:
             final_text += f"\n\n**Grup Gagal:**\n- {failed_list}"
         await msg.edit(final_text, parse_mode='md')
