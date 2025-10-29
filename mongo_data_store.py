@@ -1,4 +1,5 @@
 
+import asyncio
 from motor.motor_asyncio import AsyncIOMotorClient
 from pymongo import UpdateOne
 import time
@@ -6,112 +7,121 @@ import time
 class MongoDataStore:
     def __init__(self, loop, connection_string):
         print("🗄️ [MongoDataStore] Initializing...")
-        if not connection_string:
-            raise ValueError("MONGO_CONNECTION_STRING is not set in the .env file.")
         self.client = AsyncIOMotorClient(connection_string, io_loop=loop)
         self.db = self.client['telegram_scraper_db']
+        
+        # --- PERBAIKAN: Menggunakan 2 koleksi sesuai struktur database Anda ---
         self.users = self.db['users']
-        self.scan_status = self.db['scan_status']
-        print("✅ [MongoDataStore] Collections initialized for STRING-based IDs.")
-
-    async def connect(self):
-        try:
-            await self.client.admin.command('ping')
-            print("✅ [MongoDataStore] Database connection successful.")
-        except Exception as e:
-            print(f"🔥 [MongoDataStore] CRITICAL: Database connection failed: {e}")
-            raise
+        self.scan_status = self.db['scan_status'] # Koleksi ini menangani checkpoint & status selesai
+        
+        print(f"✅ [MongoDataStore] Connected to database '{self.db.name}'. Using collections: 'users', 'scan_status'.")
 
     async def get_user_history(self, user_id: str):
         user_doc = await self.users.find_one({'user_id': user_id})
         return user_doc.get('history', []) if user_doc else []
 
-    async def save_user_data_logic(self, user_id: str, new_history_entry: dict, is_update=False):
+    async def save_user_data_logic(self, user_id: str, new_entry: dict, is_update: bool):
         if is_update:
-            # Gunakan positional operator '$' yang aman berdasarkan timestamp
             await self.users.update_one(
-                {'user_id': user_id, 'history.timestamp': new_history_entry['timestamp']},
-                {'$set': {'history.$': new_history_entry}}
+                {'user_id': user_id},
+                {'$pop': {'history': 1}}
+            )
+            await self.users.update_one(
+                {'user_id': user_id},
+                {'$push': {'history': new_entry}}
             )
         else:
             await self.users.update_one(
                 {'user_id': user_id},
-                {'$push': {'history': new_history_entry}},
+                {'$push': {'history': new_entry}},
                 upsert=True
             )
 
-    async def update_user_history_batch(self, user_batch: list):
-        if not user_batch: return 0
-
-        user_ids = [str(u['user_entity'].id) for u in user_batch]
+    async def update_user_history_batch(self, batch: list):
+        if not batch: return 0
+            
+        print(f"   [DB Batch] Processing batch of {len(batch)} users...")
+        bulk_operations = []
+        user_ids_in_batch = {str(item['user_entity'].id) for item in batch}
         
-        pipeline = [{'$match': {'user_id': {'$in': user_ids}}}, {'$project': {'user_id': 1, 'last_history': {'$arrayElemAt': ['$history', -1]}}}]
-        existing_users_cursor = self.users.aggregate(pipeline)
-        existing_users_map = {doc['user_id']: doc['last_history'] async for doc in existing_users_cursor}
+        existing_users_cursor = self.users.find({'user_id': {'$in': list(user_ids_in_batch)}})
+        existing_users = {u['user_id']: u for u in await existing_users_cursor.to_list(length=len(user_ids_in_batch))}
         
-        bulk_ops = []
         saved_count = 0
 
-        for user_data in user_batch:
-            user_entity = user_data['user_entity']
-            active_chat_id = str(user_data['active_chat_id'])
+        for item in batch:
+            user_entity = item['user_entity']
+            active_chat_id = item['active_chat_id']
             user_id = str(user_entity.id)
-            
             current_identity = {'full_name': (user_entity.first_name or "") + (" " + (user_entity.last_name or "") if user_entity.last_name else ""), 'username': user_entity.username}
-            last_entry = existing_users_map.get(user_id, {})
-            
+            if not current_identity['username'] and not current_identity['full_name']: continue
+            user_doc = existing_users.get(user_id)
+            history = user_doc['history'] if user_doc and 'history' in user_doc else []
+            last_entry = history[-1] if history else {}
             if last_entry.get('username') and not current_identity['username']: continue
-
-            last_active_chats = set(last_entry.get('active_chats_snapshot', []))
-            is_new_group = active_chat_id not in last_active_chats
             identity_changed = (last_entry.get('full_name') != current_identity['full_name'] or last_entry.get('username') != current_identity['username'])
+            last_active_chats = set(last_entry.get('active_chats_snapshot', []))
+            is_new_group = active_chat_id and active_chat_id not in last_active_chats
 
-            if not last_entry or identity_changed:
-                last_active_chats.add(active_chat_id)
+            if not history or identity_changed:
+                if active_chat_id: last_active_chats.add(active_chat_id)
                 new_entry = {'timestamp': int(time.time()), 'full_name': current_identity['full_name'], 'username': current_identity['username'], 'active_chats_snapshot': sorted(list(last_active_chats)), 'shared_chats': last_entry.get('shared_chats', [])}
-                bulk_ops.append(UpdateOne({'user_id': user_id}, {'$push': {'history': new_entry}}, upsert=True))
+                bulk_operations.append(UpdateOne({'user_id': user_id}, {'$push': {'history': new_entry}}, upsert=True))
                 saved_count += 1
             elif is_new_group:
+                history.pop()
                 last_active_chats.add(active_chat_id)
-                new_snapshot = sorted(list(last_active_chats))
-                # === INI ADALAH PERBAIKAN KRITIS ===
-                # Gunakan positional operator '$' untuk memperbarui field di dalam elemen array
-                bulk_ops.append(UpdateOne(
-                    {'user_id': user_id, 'history.timestamp': last_entry['timestamp']},
-                    {'$set': {'history.$.active_chats_snapshot': new_snapshot}}
-                ))
+                last_entry['active_chats_snapshot'] = sorted(list(last_active_chats))
+                history.append(last_entry)
+                bulk_operations.append(UpdateOne({'user_id': user_id}, {'$set': {'history': history}}, upsert=True))
                 saved_count += 1
-        
-        if bulk_ops: 
-            try:
-                await self.users.bulk_write(bulk_ops, ordered=False)
-            except Exception as e:
-                print(f"🔥 [DB Batch Error] An error occurred during bulk write: {e}")
 
+        if bulk_operations:
+            await self.users.bulk_write(bulk_operations)
+            print(f"   [DB Batch] ✅ Bulk write completed. Saved/Updated {saved_count} records.")
         return saved_count
 
-    async def get_scan_status(self, group_id: str):
-        status = await self.scan_status.find_one({'group_id': group_id})
-        return status if status else {}
-
-    async def update_scan_status(self, group_id: str, status_data: dict):
-        if not status_data: await self.scan_status.delete_one({'group_id': group_id})
-        else: await self.scan_status.update_one({'group_id': group_id}, {'$set': status_data}, upsert=True)
+    async def get_completed_scan_ids(self):
+        # --- PERBAIKAN: Mencari di 'scan_status' dimana 'completed' adalah True ---
+        cursor = self.scan_status.find({'completed': True})
+        return {doc['group_id'] for doc in await cursor.to_list(length=None)}
 
     async def mark_scan_as_completed(self, group_id: str):
-        await self.scan_status.update_one({'group_id': group_id}, {'$set': {'completed': True}}, upsert=True)
-        print(f"   [DB] Marked group {group_id} as completed.")
-
-    async def get_completed_scan_ids(self) -> set:
-        completed_scans = self.scan_status.find({'completed': True})
-        return {doc['group_id'] async for doc in completed_scans}
+        # --- PERBAIKAN: Menulis status 'completed: true' ke 'scan_status' ---
+        await self.scan_status.update_one(
+            {'group_id': group_id},
+            {'$set': {'completed': True, 'group_id': group_id}},
+            upsert=True
+        )
 
     async def add_completed_scan_id(self, group_id: str):
         await self.mark_scan_as_completed(group_id)
 
-    async def get_total_user_count(self):
-        return await self.users.count_documents({})
+    async def get_scan_status(self, group_id: str):
+        status = await self.scan_status.find_one({'group_id': group_id})
+        return status or {}
+
+    async def update_scan_status(self, group_id: str, status_doc: dict):
+        if not status_doc:
+            # Jika status kosong, hapus checkpoint tapi pertahankan status 'completed'
+            await self.scan_status.update_one(
+                {'group_id': group_id},
+                {'$unset': {'filter_index': "", 'total_saved_since_start': ""}}
+            )
+        else:
+            status_doc_with_id = {'group_id': group_id, **status_doc}
+            await self.scan_status.update_one(
+                {'group_id': group_id},
+                {'$set': status_doc_with_id},
+                upsert=True
+            )
 
     async def clear_scan_record(self, group_id: str):
-        await self.scan_status.delete_one({'group_id': group_id})
-        print(f"   [DB] Cleared all scan records for group {group_id}.")
+        # --- PERBAIKAN: Menghapus status 'completed' dari 'scan_status' ---
+        await self.scan_status.update_one(
+            {'group_id': group_id},
+            {'$set': {'completed': False}},
+        )
+
+    async def get_total_user_count(self):
+        return await self.users.estimated_document_count()
