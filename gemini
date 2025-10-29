@@ -48,7 +48,7 @@ note penting
 - Implementasikan sistem batch processing ini ke dalam fungsi scan_group
 - Metode scan group menjadi scan group biasa jika member grup kurang dari 10000
 - Konekan dengan database mongodb atlas
-- buat fungsi untuk mengambil data user secara otomatis dari chat user ke grup yang sama dengan user yang dipakai untuk bot. catatan: fungsi ini berjalan bedasarkan list grup id yang sudah berhasil di scan dari scan grup (pastikan data id tele int bukan string sehingga tidak ada miss dalam pencocokan if)
+- buat fungsi untuk mengambil data user secara otomatis dari chat user ke grup yang sama dengan user yang dipakai untuk bot. catatan: fungsi ini berjalan bedasarkan list grup id yang sudah berhasil di scan dari scan grup (pastikan data id tele string bukan int sehingga tidak ada miss dalam pencocokan if)
 - buat fungsi untuk menampilkan grup yang sudah di scan dan yang belum pernah di scan
 - buat fungsi menambah grup secara manual untuk masuk daftar list pasif detection bot
 - buat /scan_allgroup biar tidak scan grup satu satu
@@ -64,7 +64,6 @@ note penting
 - Solving race condition $addToSet mengunakan logika update menjadi operasi atomik, di mana dua proses bot yang berjalan bersamaan mencoba mengubah data yang sama pada saat yang sama, yang bisa menyebabkan salah satu perubahan hilang atau data menjadi rusak.
 - Pengguna tidak memiliki username publik (@username), buat profil mereka menggunakan ID pengguna internal. Formatnya adalah tg://user?id=<user_id>
 - atisipasi perbaiki terkena limit pesan melebihi batas max pesan yang akan dikirim
-
 
 
 
