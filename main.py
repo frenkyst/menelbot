@@ -186,14 +186,31 @@ Klik pada perintah untuk menyalinnya.
             return
 
         last_entry = history[-1]
-        username = f"@{live_entity.username}" if live_entity and live_entity.username else f"@{last_entry.get('username', 'N/A')} (from DB)"
-        header = f"**Riwayat untuk ID:** `{user_id_str}`\n**Nama Terakhir:** `{last_entry['full_name']}`\n**Username:** `{username}`"
         
+        # --- PERBAIKAN: Membuat tautan profil yang bisa diklik ---
+        user_link_text = ""
+        current_username = last_entry.get('username')
+        if live_entity and live_entity.username:
+            current_username = live_entity.username
+        
+        if current_username:
+            user_link_text = f"@{current_username}"
+        else:
+            # Jika tidak ada username, gunakan nama lengkap sebagai teks tautan
+            user_link_text = f"<code>{last_entry['full_name']}</code> (Tanpa Username)"
+
+        # Membuat tautan dengan format tg://user?id=...
+        clickable_user_link = f"<a href='tg://user?id={user_id_str}'>{user_link_text}</a>"
+        
+        header = (f"**Riwayat untuk ID:** `{user_id_str}`\n"
+                  f"**Profil Terakhir:** {clickable_user_link}")
+
         history_blocks = []
         for e in reversed(history):
             t = time.strftime('%Y-%m-%d', time.localtime(e['timestamp']))
-            u = e.get('username', 'N/A')
-            history_blocks.append(f"{t}: {e['full_name']} (@{u})")
+            u_name = e.get('username')
+            u_display = f"@{u_name}" if u_name else "(Tanpa Username)"
+            history_blocks.append(f"{t}: {e['full_name']} ({u_display})")
 
         groups_output = ""
         for key, title in [('active_chats_snapshot', 'Terlihat di Grup'), ('shared_chats', 'Grup Bersama')]:
@@ -201,6 +218,7 @@ Klik pada perintah untuk menyalinnya.
                 titles = [await self._get_chat_title(cid) for cid in chat_ids]
                 groups_output += f"\n\n**{title}:**\n- " + "\n- ".join(titles)
         
+        # Menggunakan parse_mode='html' untuk tautan
         await event.reply(f"{header}\n\n**Perubahan Identitas:**\n<pre>" + '\n'.join(history_blocks) + "</pre>" + groups_output, parse_mode='html')
 
     async def scan_group(self, event, *args):
