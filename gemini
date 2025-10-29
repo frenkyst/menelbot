@@ -63,6 +63,7 @@ note penting
 - buat chat private ikut scan pasif tapi metode white list grup masih berlaku
 - Solving race condition $addToSet mengunakan logika update menjadi operasi atomik, di mana dua proses bot yang berjalan bersamaan mencoba mengubah data yang sama pada saat yang sama, yang bisa menyebabkan salah satu perubahan hilang atau data menjadi rusak.
 - Pengguna tidak memiliki username publik (@username), buat profil mereka menggunakan ID pengguna internal. Formatnya adalah tg://user?id=<user_id>
+- atisipasi perbaiki terkena limit pesan melebihi batas max pesan yang akan dikirim
 
 
 
