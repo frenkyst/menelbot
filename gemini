@@ -54,7 +54,17 @@ note penting
 - buat /scan_allgroup biar tidak scan grup satu satu
 - saat /scan_group dan /scan_allgroup fungsi penambahan nama grup yang discan ke active_chats_snapshot
 - Konsistensi data user id, chat id dan grup id gunakan string. biar tidak salah dalam menampilkan laporan
-- proses penyimpanan data dibuat batch jangan disimpan satu satu tunggu sampai data terkumpul 1000 data baru di simpan ke database
+- proses penyimpanan data dibuat batch jangan disimpan satu satu tunggu sampai data terkumpul 300 data baru di simpan ke database
 - Scan Aktif (/scan_group, /scan_allgrup): Menggunakan batch processing untuk kecepatan saat menangani ribuan pengguna.
 - Scan Pasif (Pesan masuk): Menggunakan penyimpanan individual untuk merespons peristiwa secara real-time dengan efisien.
+- Hanya Admin yang bisa memberikan perintah perintah yang ada di bot jika ada user lain yang menjalan perintah abakan jangan ada balasan atau reaksi apapun
+- perintah /help dan ketika hasil tampilan dari perintah help di klik misal klik /scan_group maka langsung jalan perintah tersebut dan langsung meminta id grup
+- buat fungsi scan_allgrup ke 2 yang fungsinya sama dengan scan_all grup tapi ini hanya menscan grup yang belum pernah discan sama sekali, gunakan fungsi yang sama pada scan grup pertama biar tidak terlalu banyak fungsi yang tidak perlu atau doble fungsi tinggal tambahkan saja fungsi logika yang kurang
+- buat chat private ikut scan pasif tapi metode white list grup masih berlaku
+- Solving race condition $addToSet mengunakan logika update menjadi operasi atomik, di mana dua proses bot yang berjalan bersamaan mencoba mengubah data yang sama pada saat yang sama, yang bisa menyebabkan salah satu perubahan hilang atau data menjadi rusak.
+
+
+
+
+
 
