@@ -62,7 +62,7 @@ note penting
 - buat fungsi scan_allgrup ke 2 yang fungsinya sama dengan scan_all grup tapi ini hanya menscan grup yang belum pernah discan sama sekali, gunakan fungsi yang sama pada scan grup pertama biar tidak terlalu banyak fungsi yang tidak perlu atau doble fungsi tinggal tambahkan saja fungsi logika yang kurang
 - buat chat private ikut scan pasif tapi metode white list grup masih berlaku
 - Solving race condition $addToSet mengunakan logika update menjadi operasi atomik, di mana dua proses bot yang berjalan bersamaan mencoba mengubah data yang sama pada saat yang sama, yang bisa menyebabkan salah satu perubahan hilang atau data menjadi rusak.
-
+- Pengguna tidak memiliki username publik (@username), buat profil mereka menggunakan ID pengguna internal. Formatnya adalah tg://user?id=<user_id>
 
 
 
