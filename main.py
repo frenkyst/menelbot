@@ -21,7 +21,7 @@ class TeleScrapeTracker:
         self.API_HASH = os.getenv('TG_API_HASH')
         self.ADMIN_IDS = [int(i) for i in os.getenv('ADMIN_IDS', '').split(',') if i]
         self.MONGO_CONNECTION_STRING = os.getenv('MONGO_CONNECTION_STRING')
-        self.BATCH_SIZE = 1000
+        self.BATCH_SIZE = 500
 
         self.client = TelegramClient(session_name, self.API_ID, self.API_HASH)
         self.loop = asyncio.get_event_loop()
@@ -52,7 +52,7 @@ class TeleScrapeTracker:
     async def _get_chat_title(self, chat_id: str):
         if chat_id in self.chat_titles_cache: return self.chat_titles_cache[chat_id]
         try:
-            entity = await self.client.get_entity(int(chat_id))
+            entity = await self.client.get_entity(int(chat_id)) # Convert to int ONLY for API call
             title = entity.title if hasattr(entity, 'title') else f"Chat Privasi"
             self.chat_titles_cache[chat_id] = title
             return title
@@ -104,7 +104,9 @@ class TeleScrapeTracker:
         try:
             sender = await event.get_sender()
             if isinstance(sender, User) and event.is_group:
-                print(f"🕵️  [PassiveTrack] Saw message from {sender.id} in group {chat_id_str}.")
+                group_title = await self._get_chat_title(chat_id_str)
+                sender_name = sender.first_name or ""
+                print(f"🕵️  [PassiveTrack] Saw message from {sender_name} ({sender.id}) in group '{group_title}' ({chat_id_str}).")
                 await self.save_user_data(sender, active_chat_id=chat_id_str)
         except Exception as e: print(f"-❗️- [PassiveTrack] Minor exception: {e}")
 
