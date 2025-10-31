@@ -44,7 +44,6 @@ note penting
 - Perintah /scan_group dan /scan_allgroup pastikan bisa menerima ID grup sebagai argumen dan data yang disimpan sama berupa string dengan awalan -100
 - Tampilkan di terminal berapa jumlah user yang disimpan di database
 - Fungsi /scan_user <user_id> jika tidak ditemukan ambil dan cocokkan dengan data yang ada di database pastikan penyimpanan data tidak redudan dengan menggunakan fungsi inti save user data
-- Buatkan fungsi /scan_allgrup biar tidak scan grup satu persatu
 - Implementasikan sistem batch processing ini ke dalam fungsi scan_group
 - Metode scan group menjadi scan group biasa jika member grup kurang dari 10000
 - Konekan dengan database mongodb atlas
@@ -60,11 +59,10 @@ note penting
 - Hanya Admin yang bisa memberikan perintah perintah yang ada di bot jika ada user lain yang menjalan perintah abakan jangan ada balasan atau reaksi apapun
 - perintah /help dan ketika hasil tampilan dari perintah help di klik misal klik /scan_group maka langsung jalan perintah tersebut dan langsung meminta id grup
 - buat fungsi scan_allgrup ke 2 yang fungsinya sama dengan scan_all grup tapi ini hanya menscan grup yang belum pernah discan sama sekali, gunakan fungsi yang sama pada scan grup pertama biar tidak terlalu banyak fungsi yang tidak perlu atau doble fungsi tinggal tambahkan saja fungsi logika yang kurang
-- buat chat private ikut scan pasif tapi metode white list grup masih berlaku
 - Solving race condition $addToSet mengunakan logika update menjadi operasi atomik, di mana dua proses bot yang berjalan bersamaan mencoba mengubah data yang sama pada saat yang sama, yang bisa menyebabkan salah satu perubahan hilang atau data menjadi rusak.
 - Pengguna tidak memiliki username publik (@username), buat profil mereka menggunakan ID pengguna internal. Formatnya adalah tg://user?id=<user_id>
 - atisipasi perbaiki terkena limit pesan melebihi batas max pesan yang akan dikirim
-
+- Private chat juga diproses semua tanpa memasukan dulu ke whitelist grup yang sudah discan.
 
 
 
