@@ -396,7 +396,21 @@ Klik pada perintah untuk menyalinnya.
         print(f"   [CMD /scan_user] Finding common chats with {user_id_str}")
         try:
             user = await self.client.get_entity(int(user_id_str))
-            common_chats = await self.client.get_common_chats(int(user_id_str))
+            common_chats = []
+            
+            # --- PERBAIKAN: Implementasi manual yang andal ---
+            dialogs = await self.client.get_dialogs()
+            for dialog in dialogs:
+                if dialog.is_group or (dialog.is_channel and getattr(dialog.entity, 'megagroup', False)):
+                    try:
+                        # Metode efisien untuk memeriksa apakah satu user ada di grup
+                        participants = await self.client.get_participants(dialog.entity, filter=User, search=user.username)
+                        if participants:
+                             common_chats.append(dialog.entity)
+                    except Exception as e:
+                        # Abaikan grup di mana kita tidak memiliki izin
+                        # print(f"   [ScanUser] Could not check participants in '{dialog.title}': {e}")
+                        pass
             
             common_chat_ids = [str(c.id) for c in common_chats]
             if await self.save_user_data(user, shared_chats=common_chat_ids):
@@ -434,7 +448,7 @@ Klik pada perintah untuk menyalinnya.
             scanned_list = [f"- {groups.get(gid, '[N/A]')} (`{gid}`)" for gid in scanned_ids if gid in groups]
             unscanned_list = [f"- {title} (`{gid}`)" for gid, title in groups.items() if gid not in scanned_ids]
             
-            # --- PERBAIKAN: Logika pemecahan pesan ---
+            # Logika pemecahan pesan
             
             # 1. Kirim pesan "Selesai di Scan" terlebih dahulu
             scanned_header = "✅ **Selesai (Pelacakan Pasif Aktif):**\n"
@@ -444,7 +458,6 @@ Klik pada perintah untuk menyalinnya.
             # 2. Kirim pesan "Belum di Scan" sebagai balasan
             unscanned_header = "❌ **Belum di Scan:**\n"
             unscanned_body = '\n'.join(unscanned_list) or "Semua grup yang dikenal telah dipindai."
-            # Menggunakan event.chat_id untuk memastikan pesan terkirim di chat yang sama
             await self.send_long_message(await self.client.get_messages(event.chat_id, ids=msg.id), unscanned_header, unscanned_body, is_reply=True)
 
         except Exception as e:
